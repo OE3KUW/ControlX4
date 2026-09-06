@@ -1,4 +1,4 @@
-# ControlX4 3.0
+# ControlX4 3.1
 
 Websteuerung fuer das ESP32 Relay X4 V1.1 mit ESP32-WROOM-32E (N4).
 
@@ -49,6 +49,12 @@ Netzwerkadministrator.
 
 Die Relaisausgaenge sind als `active LOW` konfiguriert. Beim Einschalten und
 vor einem OTA-Update werden alle Relais ausgeschaltet.
+
+Relais 1 und 2 sowie Relais 3 und 4 sind jeweils gegenseitig verriegelt. Sobald
+ein Relais eines Paares eingeschaltet ist, kann das andere erst eingeschaltet
+werden, nachdem das aktive Relais ausgeschaltet wurde. Die Firmware prueft
+diese Bedingung auch bei direkten HTTP-API-Aufrufen; ein unzulaessiger
+Einschaltbefehl wird mit HTTP-Status `409 Conflict` abgelehnt.
 
 Die programmierbare LED zeigt den WLAN-Zustand:
 
@@ -101,8 +107,8 @@ zugaenglichen stromlosen Reset- und Programmierweg.
 Die ausfuehrliche Anleitung steht in `CRON_ANLEITUNG.md`. Das Hilfsskript liegt
 unter `tools/controlx4.sh`.
 
-> Achtung: Die derzeitige Firmware schaltet vier unabhaengige Relais. Eine
-> Jalousiesteuerung benoetigt vor dem Anschluss an einen Motor eine elektrische
-> und softwareseitige AUF/AB-Verriegelung sowie eine Laufzeitbegrenzung.
+> Achtung: Die Firmware besitzt eine softwareseitige Verriegelung fuer die
+> Relaispaare 1/2 und 3/4. Eine Jalousiesteuerung sollte zusaetzlich elektrisch
+> verriegelt werden und benoetigt eine zur Anwendung passende Laufzeitbegrenzung.
 > Arbeiten an 230 V duerfen nur spannungsfrei und durch entsprechend
 > qualifizierte Personen durchgefuehrt werden.

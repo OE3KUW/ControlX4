@@ -11,7 +11,10 @@ namespace {
 constexpr bool RELAY_ACTIVE_LOW = true;
 constexpr uint8_t RELAY_PINS[] = {32, 33, 25, 26};
 constexpr size_t RELAY_COUNT = sizeof(RELAY_PINS) / sizeof(RELAY_PINS[0]);
-constexpr char FIRMWARE_VERSION[] = "3.0 OTA";
+constexpr size_t RELAY_PARTNERS[] = {1, 0, 3, 2};
+static_assert(RELAY_COUNT == sizeof(RELAY_PARTNERS) / sizeof(RELAY_PARTNERS[0]),
+              "Jedes Relais braucht einen Verriegelungspartner");
+constexpr char FIRMWARE_VERSION[] = "3.1 Verriegelung";
 constexpr uint8_t STATUS_LED_PIN = 23;
 constexpr bool STATUS_LED_ACTIVE_HIGH = true;
 constexpr uint32_t LED_SLOW_HALF_PERIOD_MS = 500;
@@ -57,6 +60,7 @@ const char PAGE_HTML[] PROGMEM = R"HTML(
     button { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 6px; background: #dfe5ea; color: #17212b; font: inherit; font-weight: 700; cursor: pointer; }
     button.on { background: #16825d; color: #fff; }
     button:disabled { cursor: wait; opacity: .65; }
+    button.locked:disabled { cursor: not-allowed; background: #f0d8d8; color: #7d2525; opacity: 1; }
     @media (max-width: 460px) { main { margin-top: 24px; } .relays { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -79,10 +83,14 @@ const char PAGE_HTML[] PROGMEM = R"HTML(
       const states = status.relays;
       buttons.forEach((button, index) => {
         const on = Boolean(states[index]);
-        button.textContent = on ? 'EIN' : 'AUS';
+        const locked = !on && Boolean(states[index ^ 1]);
+        button.textContent = on ? 'EIN' : locked ? 'GESPERRT' : 'AUS';
         button.classList.toggle('on', on);
+        button.classList.toggle('locked', locked);
+        button.disabled = locked;
         button.dataset.on = on ? '1' : '0';
         button.setAttribute('aria-pressed', String(on));
+        button.title = locked ? `Relais ${Number(button.dataset.id) % 2 === 0 ? Number(button.dataset.id) - 1 : Number(button.dataset.id) + 1} ist eingeschaltet` : '';
       });
       version.textContent = `Version ${status.version}`;
       connection.textContent = 'Verbunden';
@@ -108,7 +116,7 @@ const char PAGE_HTML[] PROGMEM = R"HTML(
       } catch (_) {
         connection.textContent = 'Befehl fehlgeschlagen';
       } finally {
-        button.disabled = false;
+        if (!button.classList.contains('locked')) button.disabled = false;
       }
     }));
 
@@ -168,9 +176,14 @@ void configureStatusLed() {
   setLedMode(LedMode::Failed);
 }
 
-void setRelay(size_t index, bool on) {
+bool setRelay(size_t index, bool on) {
+  if (on && relayStates[RELAY_PARTNERS[index]]) {
+    return false;
+  }
+
   digitalWrite(RELAY_PINS[index], relayLevel(on));
   relayStates[index] = on;
+  return true;
 }
 
 String statusJson() {
@@ -214,7 +227,13 @@ void handleRelayCommand() {
 
   const size_t relayIndex = static_cast<size_t>(relayNumber - 1);
   const bool turnOn = stateArgument == "on";
-  setRelay(relayIndex, turnOn);
+  if (!setRelay(relayIndex, turnOn)) {
+    const size_t partnerIndex = RELAY_PARTNERS[relayIndex];
+    Serial.printf("[RELAIS] Nicht ausgefuehrt: Relais %d ist durch Relais %u verriegelt\n",
+                  relayNumber, static_cast<unsigned int>(partnerIndex + 1));
+    sendJson(409, F("{\"error\":\"Gegenrelais ist eingeschaltet\"}"));
+    return;
+  }
 
   Serial.printf("[RELAIS] Ausgefuehrt: Relais %d (GPIO %u) -> %s\n",
                 relayNumber, RELAY_PINS[relayIndex], turnOn ? "EIN" : "AUS");
